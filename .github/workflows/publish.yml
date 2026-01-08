@@ -5,18 +5,10 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: 'Publish to Chrome Web Store'
-        required: true
-        default: 'true'
-        type: boolean
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -42,23 +34,25 @@ jobs:
           name: extension-v${{ steps.version.outputs.version }}
           path: extension.zip
 
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.inputs.publish == 'true'
+      - name: Publish to Chrome Web Store
+        run: |
+          # Get access token from refresh token
+          ACCESS_TOKEN=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=${{ secrets.CHROME_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.CHROME_CLIENT_SECRET }}" \
+            -d "refresh_token=${{ secrets.CHROME_REFRESH_TOKEN }}" \
+            -d "grant_type=refresh_token" | jq -r '.access_token')
 
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: extension-v${{ needs.build.outputs.version }}
+          # Upload the extension
+          curl -s -X PUT \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "x-goog-api-version: 2" \
+            -T extension.zip \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${{ secrets.CHROME_EXTENSION_ID }}"
 
-      - name: Upload and publish to Chrome Web Store
-        uses: mnao305/chrome-extension-upload@v5.0.0
-        with:
-          file-path: extension.zip
-          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
-          client-id: ${{ secrets.CHROME_CLIENT_ID }}
-          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
-          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
-          publish: true
+          # Publish it
+          curl -s -X POST \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/${{ secrets.CHROME_EXTENSION_ID }}/publish"
