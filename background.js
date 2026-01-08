@@ -1,5 +1,10 @@
 let isCapturing = false;
 
+// Open UI in a new tab when extension icon clicked
+chrome.action.onClicked.addListener(() => {
+  chrome.tabs.create({ url: 'popup.html' });
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'startCapture') {
     startCapture().then(sendResponse);
