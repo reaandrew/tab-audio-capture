@@ -108,9 +108,12 @@ async function startProcessing() {
     // Use getDisplayMedia - audio continues playing, user picks the tab
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
       audio: true,
-      video: false,
+      video: true,  // Required, but we won't use it
       preferCurrentTab: true
     });
+
+    // Stop video track immediately - we only need audio
+    mediaStream.getVideoTracks().forEach(track => track.stop());
 
     // Set up audio processing
     audioContext = new AudioContext({ sampleRate: 16000 });
