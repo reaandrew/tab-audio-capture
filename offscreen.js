@@ -116,11 +116,6 @@ async function startProcessing(streamId) {
       video: false
     });
 
-    // Play audio back so user can still hear it
-    const audio = new Audio();
-    audio.srcObject = mediaStream;
-    audio.play();
-
     // Set up audio processing
     audioContext = new AudioContext({ sampleRate: 16000 });
     const source = audioContext.createMediaStreamSource(mediaStream);
