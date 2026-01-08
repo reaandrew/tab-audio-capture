@@ -23,10 +23,11 @@
     "service_worker": "background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co"
   },
   "host_permissions": [
     "https://huggingface.co/*",
-    "https://*.huggingface.co/*"
+    "https://*.huggingface.co/*",
+    "https://*.hf.co/*"
   ]
 }
