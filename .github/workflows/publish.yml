@@ -14,10 +14,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get version from manifest
+      - name: Get version from tag
         id: version
         run: |
-          VERSION=$(jq -r '.version' manifest.json)
+          VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create extension zip
