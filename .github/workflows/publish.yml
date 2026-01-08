@@ -32,7 +32,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: extension-v${{ steps.version.outputs.version }}
-          path: extension.zip
+          path: |
+            manifest.json
+            background.js
+            popup.html
+            popup.js
+            offscreen.html
+            offscreen.js
+            icons/
 
       - name: Publish to Chrome Web Store
         run: |
