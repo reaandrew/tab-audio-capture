@@ -80,14 +80,24 @@ async function startProcessing(streamId) {
     });
 
     // Load model first
-    await loadModel((progress) => {
-      if (progress.progress) {
-        chrome.runtime.sendMessage({
-          action: 'loadProgress',
-          progress: progress.progress
-        });
-      }
-    });
+    try {
+      await loadModel((progress) => {
+        if (progress.progress) {
+          chrome.runtime.sendMessage({
+            action: 'loadProgress',
+            progress: progress.progress
+          });
+        }
+      });
+    } catch (modelErr) {
+      console.error('Model load error:', modelErr);
+      chrome.runtime.sendMessage({
+        action: 'statusUpdate',
+        status: 'error',
+        message: `Model error: ${modelErr.message}`
+      });
+      throw modelErr;
+    }
 
     chrome.runtime.sendMessage({
       action: 'statusUpdate',
@@ -105,6 +115,11 @@ async function startProcessing(streamId) {
       },
       video: false
     });
+
+    // Play audio back so user can still hear it
+    const audio = new Audio();
+    audio.srcObject = mediaStream;
+    audio.play();
 
     // Set up audio processing
     audioContext = new AudioContext({ sampleRate: 16000 });
