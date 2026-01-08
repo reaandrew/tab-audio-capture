@@ -1,4 +1,4 @@
-import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0';
+import { pipeline } from './transformers.min.js';
 
 let transcriber = null;
 let mediaStream = null;

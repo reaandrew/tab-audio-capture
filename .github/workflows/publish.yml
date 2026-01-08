@@ -39,6 +39,7 @@ jobs:
             popup.js
             offscreen.html
             offscreen.js
+            transformers.min.js
             icons/
 
       - name: Publish to Chrome Web Store
