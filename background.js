@@ -2,7 +2,7 @@ let isCapturing = false;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'startCapture') {
-    startCapture(message.tabId).then(sendResponse);
+    startCapture().then(sendResponse);
     return true;
   } else if (message.action === 'stopCapture') {
     stopCapture().then(sendResponse);
@@ -13,7 +13,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function startCapture(tabId) {
+async function startCapture() {
   try {
     // Stop any existing capture first
     if (isCapturing) {
@@ -32,20 +32,14 @@ async function startCapture(tabId) {
     // Create fresh offscreen document
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
-      reasons: ['USER_MEDIA'],
+      reasons: ['DISPLAY_MEDIA'],
       justification: 'Processing tab audio with Whisper for filler word detection'
     });
 
-    // Get stream ID for the tab
-    const streamId = await chrome.tabCapture.getMediaStreamId({
-      targetTabId: tabId
-    });
-
-    // Tell offscreen document to start capturing
+    // Tell offscreen document to start capturing (it will use getDisplayMedia)
     const response = await chrome.runtime.sendMessage({
       action: 'startProcessing',
-      target: 'offscreen',
-      streamId: streamId
+      target: 'offscreen'
     });
 
     if (response.success) {

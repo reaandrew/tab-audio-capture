@@ -62,7 +62,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target !== 'offscreen') return;
 
   if (message.action === 'startProcessing') {
-    startProcessing(message.streamId).then(sendResponse);
+    startProcessing().then(sendResponse);
     return true;
   } else if (message.action === 'stopProcessing') {
     stopProcessing().then(sendResponse);
@@ -70,7 +70,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function startProcessing(streamId) {
+async function startProcessing() {
   try {
     // Send loading status
     chrome.runtime.sendMessage({
@@ -102,18 +102,14 @@ async function startProcessing(streamId) {
     chrome.runtime.sendMessage({
       action: 'statusUpdate',
       status: 'ready',
-      message: 'Model loaded, starting capture...'
+      message: 'Select a tab to capture...'
     });
 
-    // Get tab audio stream
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        mandatory: {
-          chromeMediaSource: 'tab',
-          chromeMediaSourceId: streamId
-        }
-      },
-      video: false
+    // Use getDisplayMedia - audio continues playing, user picks the tab
+    mediaStream = await navigator.mediaDevices.getDisplayMedia({
+      audio: true,
+      video: false,
+      preferCurrentTab: true
     });
 
     // Set up audio processing
