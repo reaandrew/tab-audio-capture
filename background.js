@@ -15,18 +15,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function startCapture(tabId) {
   try {
-    // Create offscreen document if needed
+    // Stop any existing capture first
+    if (isCapturing) {
+      await stopCapture();
+    }
+
+    // Close existing offscreen document to release any streams
     const existingContexts = await chrome.runtime.getContexts({
       contextTypes: ['OFFSCREEN_DOCUMENT']
     });
 
-    if (existingContexts.length === 0) {
-      await chrome.offscreen.createDocument({
-        url: 'offscreen.html',
-        reasons: ['USER_MEDIA'],
-        justification: 'Processing tab audio with Whisper for filler word detection'
-      });
+    if (existingContexts.length > 0) {
+      await chrome.offscreen.closeDocument();
     }
+
+    // Create fresh offscreen document
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['USER_MEDIA'],
+      justification: 'Processing tab audio with Whisper for filler word detection'
+    });
 
     // Get stream ID for the tab
     const streamId = await chrome.tabCapture.getMediaStreamId({
@@ -53,10 +61,24 @@ async function startCapture(tabId) {
 
 async function stopCapture() {
   try {
-    await chrome.runtime.sendMessage({
-      action: 'stopProcessing',
-      target: 'offscreen'
+    // Tell offscreen to stop processing
+    try {
+      await chrome.runtime.sendMessage({
+        action: 'stopProcessing',
+        target: 'offscreen'
+      });
+    } catch (e) {
+      // Offscreen might not exist
+    }
+
+    // Close offscreen document to fully release stream
+    const existingContexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT']
     });
+
+    if (existingContexts.length > 0) {
+      await chrome.offscreen.closeDocument();
+    }
 
     isCapturing = false;
     return { success: true };
