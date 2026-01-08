@@ -3,9 +3,7 @@
   "name": "Filler Word Counter",
   "version": "1.0",
   "description": "Count filler words (err, erm, uh) from tab audio using Whisper AI",
-  "permissions": [
-    "offscreen"
-  ],
+  "permissions": [],
   "action": {
     "default_icon": {
       "16": "icons/icon16.png",

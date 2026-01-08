@@ -37,8 +37,6 @@ jobs:
             background.js
             popup.html
             popup.js
-            offscreen.html
-            offscreen.js
             transformers.min.js
             icons/
 

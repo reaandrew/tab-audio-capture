@@ -1,3 +1,5 @@
+import { pipeline } from './transformers.min.js';
+
 const canvas = document.getElementById('chart');
 const ctx = canvas.getContext('2d');
 const startBtn = document.getElementById('startBtn');
@@ -25,6 +27,13 @@ let counts = { err: 0, erm: 0, uh: 0 };
 let currentSecondCounts = { err: 0, erm: 0, uh: 0 };
 let isRunning = false;
 let chartInterval = null;
+
+// Audio/Whisper state
+let transcriber = null;
+let mediaStream = null;
+let audioContext = null;
+let processor = null;
+let audioChunks = [];
 
 const colors = {
   err: '#ff6b6b',
@@ -127,72 +136,175 @@ function checkForFillerWords(text) {
   updateStats();
 }
 
-// Listen for messages from offscreen document
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.action === 'transcription') {
-    transcript.textContent = message.text.slice(-100);
-    checkForFillerWords(message.text);
-  } else if (message.action === 'statusUpdate') {
-    statusEl.textContent = message.message;
-    statusEl.className = 'status';
-    if (message.status === 'loading') {
-      statusEl.classList.add('loading');
-      progressBar.classList.add('visible');
-    } else if (message.status === 'listening') {
-      statusEl.classList.add('active');
-      progressBar.classList.remove('visible');
-    } else {
-      progressBar.classList.remove('visible');
-    }
-  } else if (message.action === 'loadProgress') {
-    progressFill.style.width = `${message.progress}%`;
+// Load Whisper model
+async function loadModel() {
+  if (transcriber) return transcriber;
+
+  statusEl.textContent = 'Loading Whisper model...';
+  statusEl.classList.add('loading');
+  progressBar.classList.add('visible');
+
+  try {
+    transcriber = await pipeline(
+      'automatic-speech-recognition',
+      'onnx-community/whisper-tiny.en',
+      {
+        dtype: 'q8',
+        device: 'webgpu',
+        progress_callback: (progress) => {
+          if (progress.progress) {
+            progressFill.style.width = `${progress.progress}%`;
+          }
+        }
+      }
+    );
+  } catch (err) {
+    console.log('WebGPU not available, falling back to WASM');
+    transcriber = await pipeline(
+      'automatic-speech-recognition',
+      'onnx-community/whisper-tiny.en',
+      {
+        dtype: 'q8',
+        progress_callback: (progress) => {
+          if (progress.progress) {
+            progressFill.style.width = `${progress.progress}%`;
+          }
+        }
+      }
+    );
   }
-});
+
+  progressBar.classList.remove('visible');
+  statusEl.classList.remove('loading');
+  return transcriber;
+}
+
+// Process audio chunk with Whisper
+async function processAudioChunk(audioData) {
+  if (!transcriber || audioData.length < 1600) return;
+
+  try {
+    const result = await transcriber(audioData, {
+      language: 'en',
+      task: 'transcribe'
+    });
+
+    if (result && result.text) {
+      const text = result.text.trim();
+      if (text && text !== '[BLANK_AUDIO]') {
+        transcript.textContent = text.slice(-100);
+        checkForFillerWords(text);
+      }
+    }
+  } catch (err) {
+    console.error('Transcription error:', err);
+  }
+}
 
 async function start() {
   startBtn.disabled = true;
   statusEl.textContent = 'Starting...';
 
   try {
-    const response = await chrome.runtime.sendMessage({
-      action: 'startCapture'
+    // Load model first
+    await loadModel();
+
+    statusEl.textContent = 'Select a tab to capture...';
+
+    // Get display media - this shows the picker
+    mediaStream = await navigator.mediaDevices.getDisplayMedia({
+      audio: true,
+      video: true,
+      preferCurrentTab: false
     });
 
-    if (response.success) {
-      isRunning = true;
-      stopBtn.disabled = false;
-      chartInterval = setInterval(updateChart, 1000);
-    } else {
-      throw new Error(response.error || 'Failed to start capture');
+    // Stop video track - we only need audio
+    mediaStream.getVideoTracks().forEach(track => track.stop());
+
+    // Check we have audio
+    if (mediaStream.getAudioTracks().length === 0) {
+      throw new Error('No audio track - make sure to check "Share audio"');
     }
+
+    // Set up audio processing
+    audioContext = new AudioContext({ sampleRate: 16000 });
+    const source = audioContext.createMediaStreamSource(mediaStream);
+
+    processor = audioContext.createScriptProcessor(4096, 1, 1);
+    audioChunks = [];
+
+    let chunkDuration = 0;
+    const TARGET_DURATION = 3;
+
+    processor.onaudioprocess = (e) => {
+      if (!isRunning) return;
+
+      const inputData = e.inputBuffer.getChannelData(0);
+      audioChunks.push(new Float32Array(inputData));
+      chunkDuration += e.inputBuffer.duration;
+
+      if (chunkDuration >= TARGET_DURATION) {
+        const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const combined = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of audioChunks) {
+          combined.set(chunk, offset);
+          offset += chunk.length;
+        }
+
+        audioChunks = [];
+        chunkDuration = 0;
+
+        processAudioChunk(combined);
+      }
+    };
+
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+
+    isRunning = true;
+    stopBtn.disabled = false;
+    statusEl.textContent = 'Listening...';
+    statusEl.classList.add('active');
+
+    chartInterval = setInterval(updateChart, 1000);
+
   } catch (err) {
     console.error('Start error:', err);
     statusEl.textContent = `Error: ${err.message}`;
+    statusEl.className = 'status';
     startBtn.disabled = false;
   }
 }
 
-async function stop() {
+function stop() {
+  isRunning = false;
+  startBtn.disabled = false;
   stopBtn.disabled = true;
-  statusEl.textContent = 'Stopping...';
+  statusEl.textContent = 'Stopped';
+  statusEl.className = 'status';
 
-  try {
-    await chrome.runtime.sendMessage({ action: 'stopCapture' });
-
-    isRunning = false;
-    startBtn.disabled = false;
-    statusEl.textContent = 'Stopped';
-    statusEl.className = 'status';
-
-    if (chartInterval) {
-      clearInterval(chartInterval);
-      chartInterval = null;
-    }
-  } catch (err) {
-    console.error('Stop error:', err);
-    statusEl.textContent = `Error: ${err.message}`;
-    stopBtn.disabled = false;
+  if (processor) {
+    processor.disconnect();
+    processor = null;
   }
+
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+
+  if (chartInterval) {
+    clearInterval(chartInterval);
+    chartInterval = null;
+  }
+
+  audioChunks = [];
 }
 
 function reset() {
